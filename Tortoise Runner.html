@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tortoise Runner</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        #gameContainer {
+            position: relative;
+            width: 95vw;
+            max-width: 1200px;
+            height: 500px;
+            background: linear-gradient(to bottom, #87CEEB 0%, #E0F6FF 50%, #C2B280 50%, #8B7355 100%);
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        #gameCanvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(10px);
+            z-index: 10;
+            transition: opacity 0.3s;
+        }
+
+        .screen.hidden {
+            display: none;
+        }
+
+        h1 {
+            font-size: 4em;
+            color: #fff;
+            margin-bottom: 20px;
+            text-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .tortoise-logo {
+            font-size: 8em;
+            margin-bottom: 30px;
+            animation: bounce 2s ease-in-out infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
+        }
+
+        button {
+            padding: 18px 45px;
+            font-size: 1.3em;
+            font-weight: bold;
+            color: white;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            margin: 10px;
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 35px rgba(102, 126, 234, 0.6);
+        }
+
+        button:active {
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            box-shadow: 0 8px 25px rgba(245, 87, 108, 0.4);
+        }
+
+        .btn-secondary:hover {
+            box-shadow: 0 12px 35px rgba(245, 87, 108, 0.6);
+        }
+
+        #scoreDisplay {
+            position: absolute;
+            top: 20px;
+            right: 30px;
+            font-size: 2em;
+            font-weight: bold;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            z-index: 5;
+        }
+
+        #highScoreDisplay {
+            position: absolute;
+            top: 60px;
+            right: 30px;
+            font-size: 1.2em;
+            color: #FFD700;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            z-index: 5;
+        }
+
+        .instructions {
+            color: #ccc;
+            font-size: 1.1em;
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        #gameOverScore {
+            font-size: 2.5em;
+            color: #FFD700;
+            margin: 20px 0;
+            text-shadow: 0 3px 10px rgba(255, 215, 0, 0.5);
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="scoreDisplay">Score: 0</div>
+        <div id="highScoreDisplay">High Score: 0</div>
+
+        <div id="startScreen" class="screen">
+            <div class="tortoise-logo">🐢</div>
+            <h1>TORTOISE RUNNER</h1>
+            <p class="instructions">Press SPACE or Click to Jump</p>
+            <button id="startBtn">START GAME</button>
+        </div>
+
+        <div id="gameOverScreen" class="screen hidden">
+            <h1>GAME OVER!</h1>
+            <div id="gameOverScore">Score: 0</div>
+            <div class="button-group">
+                <button id="resurrectBtn">🔄 PLAY AGAIN</button>
+                <button id="endGameBtn" class="btn-secondary">🏁 END GAME</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const highScoreDisplay = document.getElementById('highScoreDisplay');
+        const gameOverScore = document.getElementById('gameOverScore');
+
+        canvas.width = canvas.offsetWidth;
+        canvas.height = canvas.offsetHeight;
+
+        let gameState = 'start';
+        let score = 0;
+        let highScore = 0;
+        let gameSpeed = 6;
+        let frameCount = 0;
+
+        class Tortoise {
+            constructor() {
+                this.width = 60;
+                this.height = 50;
+                this.x = 100;
+                this.y = canvas.height - 150 - this.height;
+                this.baseY = this.y;
+                this.velocityY = 0;
+                this.gravity = 0.8;
+                this.jumpPower = -16;
+                this.isJumping = false;
+            }
+
+            jump() {
+                if (!this.isJumping) {
+                    this.velocityY = this.jumpPower;
+                    this.isJumping = true;
+                }
+            }
+
+            update() {
+                this.velocityY += this.gravity;
+                this.y += this.velocityY;
+
+                if (this.y >= this.baseY) {
+                    this.y = this.baseY;
+                    this.velocityY = 0;
+                    this.isJumping = false;
+                }
+            }
+
+            draw() {
+                // Realistic tortoise facing right
+                
+                // Back legs (behind shell)
+                ctx.fillStyle = '#4a6b2d';
+                ctx.beginPath();
+                ctx.ellipse(this.x + 18, this.y + 38, 6, 10, -0.2, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Tail (small, pointing back-left)
+                ctx.fillStyle = '#4a6b2d';
+                ctx.beginPath();
+                ctx.moveTo(this.x + 8, this.y + 28);
+                ctx.lineTo(this.x + 3, this.y + 30);
+                ctx.lineTo(this.x + 8, this.y + 32);
+                ctx.closePath();
+                ctx.fill();
+
+                // Shell - realistic dome shape with 3D effect
+                ctx.fillStyle = '#3d5016';
+                ctx.beginPath();
+                ctx.ellipse(this.x + 25, this.y + 25, 22, 18, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Shell highlight (top center)
+                ctx.fillStyle = '#556b2f';
+                ctx.beginPath();
+                ctx.ellipse(this.x + 25, this.y + 20, 15, 12, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Shell scutes pattern (realistic pentagon/hexagon shapes)
+                ctx.strokeStyle = '#2d4016';
+                ctx.lineWidth = 2;
+                
+                // Central scutes
+                const scutePattern = [
+                    [25, 18], [20, 24], [30, 24],
+                    [18, 30], [25, 30], [32, 30]
+                ];
+                
+                scutePattern.forEach(([sx, sy]) => {
+                    ctx.fillStyle = '#4a5d28';
+                    ctx.beginPath();
+                    for (let i = 0; i < 6; i++) {
+                        const angle = (Math.PI / 3) * i;
+                        const px = this.x + sx + Math.cos(angle) * 4;
+                        const py = this.y + sy + Math.sin(angle) * 3.5;
+                        if (i === 0) ctx.moveTo(px, py);
+                        else ctx.lineTo(px, py);
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                });
+
+                // Shell shadow underneath
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+                ctx.beginPath();
+                ctx.ellipse(this.x + 25, this.y + 40, 20, 5, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Neck extending forward
+                ctx.fillStyle = '#5a7d3a';
+                ctx.beginPath();
+                ctx.moveTo(this.x + 42, this.y + 28);
+                ctx.lineTo(this.x + 52, this.y + 26);
+                ctx.lineTo(this.x + 52, this.y + 34);
+                ctx.lineTo(this.x + 42, this.y + 32);
+                ctx.closePath();
+                ctx.fill();
+
+                // Head - facing right with proper shape
+                ctx.fillStyle = '#5a7d3a';
+                ctx.beginPath();
+                ctx.ellipse(this.x + 56, this.y + 30, 10, 8, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Nostril
+                ctx.fillStyle = '#2d3016';
+                ctx.beginPath();
+                ctx.arc(this.x + 62, this.y + 29, 1.5, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Eye (on side of head, visible)
+                ctx.fillStyle = '#000';
+                ctx.beginPath();
+                ctx.arc(this.x + 58, this.y + 27, 3, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Eye white/highlight
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(this.x + 59, this.y + 26, 1.5, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Eye pupil
+                ctx.fillStyle = '#000';
+                ctx.beginPath();
+                ctx.arc(this.x + 59, this.y + 27, 1, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Mouth line
+                ctx.strokeStyle = '#3d4026';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(this.x + 60, this.y + 32);
+                ctx.lineTo(this.x + 64, this.y + 31);
+                ctx.stroke();
+
+                // Front legs (in front of shell, animated)
+                ctx.fillStyle = '#5a7d3a';
+                const legOffset = Math.sin(frameCount * 0.15) * 2;
+                
+                // Front right leg
+                ctx.beginPath();
+                ctx.ellipse(this.x + 40, this.y + 38 + legOffset, 6, 10, 0.2, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Front left leg
+                ctx.beginPath();
+                ctx.ellipse(this.x + 48, this.y + 38 - legOffset, 6, 10, 0.2, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Claws on front legs
+                ctx.strokeStyle = '#3d4026';
+                ctx.lineWidth = 1;
+                for (let i = 0; i < 3; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(this.x + 38 + i * 2, this.y + 46 + legOffset);
+                    ctx.lineTo(this.x + 38 + i * 2, this.y + 49 + legOffset);
+                    ctx.stroke();
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(this.x + 46 + i * 2, this.y + 46 - legOffset);
+                    ctx.lineTo(this.x + 46 + i * 2, this.y + 49 - legOffset);
+                    ctx.stroke();
+                }
+
+                // Shell edge detail
+                ctx.strokeStyle = '#2d3016';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.ellipse(this.x + 25, this.y + 25, 22, 18, 0, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+        }
+
+        class Obstacle {
+            constructor() {
+                // More variety in obstacle types based on game difficulty
+                const difficultyLevel = Math.floor(score / 1000);
+                this.width = 40 + Math.random() * 20;
+                this.height = 50 + Math.random() * 30 + (difficultyLevel * 10);
+                this.x = canvas.width;
+                this.y = canvas.height - 150 - this.height;
+                
+                // More obstacle types as difficulty increases
+                const rand = Math.random();
+                if (difficultyLevel < 2) {
+                    this.type = rand > 0.5 ? 'cactus' : 'rock';
+                } else if (difficultyLevel < 5) {
+                    if (rand > 0.66) this.type = 'cactus';
+                    else if (rand > 0.33) this.type = 'rock';
+                    else this.type = 'spikes';
+                } else {
+                    if (rand > 0.75) this.type = 'cactus';
+                    else if (rand > 0.5) this.type = 'rock';
+                    else if (rand > 0.25) this.type = 'spikes';
+                    else this.type = 'pillar';
+                }
+            }
+
+            update() {
+                this.x -= gameSpeed;
+            }
+
+            draw() {
+                if (this.type === 'cactus') {
+                    // Enhanced cactus
+                    ctx.fillStyle = '#2d7a3d';
+                    
+                    // Main body with segments
+                    ctx.fillRect(this.x + 15, this.y + 15, 12, 45);
+                    
+                    // Segments
+                    ctx.strokeStyle = '#1a4d26';
+                    ctx.lineWidth = 1;
+                    for (let i = 0; i < 6; i++) {
+                        ctx.beginPath();
+                        ctx.moveTo(this.x + 15, this.y + 20 + i * 7);
+                        ctx.lineTo(this.x + 27, this.y + 20 + i * 7);
+                        ctx.stroke();
+                    }
+                    
+                    // Multiple arms at different heights
+                    ctx.fillStyle = '#2d7a3d';
+                    ctx.fillRect(this.x + 5, this.y + 25, 10, 3);
+                    ctx.fillRect(this.x + 5, this.y + 20, 3, 15);
+                    
+                    ctx.fillRect(this.x + 27, this.y + 30, 10, 3);
+                    ctx.fillRect(this.x + 34, this.y + 25, 3, 15);
+
+                    // Dense spikes
+                    ctx.strokeStyle = '#1a4d26';
+                    ctx.lineWidth = 2;
+                    for (let i = 0; i < 8; i++) {
+                        for (let j = 0; j < 3; j++) {
+                            ctx.beginPath();
+                            ctx.moveTo(this.x + 14 + j * 7, this.y + 18 + i * 5);
+                            ctx.lineTo(this.x + 12 + j * 7, this.y + 20 + i * 5);
+                            ctx.stroke();
+                        }
+                    }
+                } else if (this.type === 'rock') {
+                    // Enhanced rock with more detail
+                    ctx.fillStyle = '#555';
+                    ctx.beginPath();
+                    ctx.moveTo(this.x + 20, this.y + 5);
+                    ctx.lineTo(this.x + 38, this.y + 20);
+                    ctx.lineTo(this.x + 35, this.y + this.height);
+                    ctx.lineTo(this.x + 5, this.y + this.height);
+                    ctx.lineTo(this.x + 2, this.y + 20);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // Multiple highlights
+                    ctx.fillStyle = '#999';
+                    ctx.beginPath();
+                    ctx.moveTo(this.x + 20, this.y + 5);
+                    ctx.lineTo(this.x + 28, this.y + 15);
+                    ctx.lineTo(this.x + 18, this.y + 25);
+                    ctx.lineTo(this.x + 8, this.y + 20);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // Darker shadows
+                    ctx.fillStyle = '#333';
+                    ctx.beginPath();
+                    ctx.moveTo(this.x + 25, this.y + 35);
+                    ctx.lineTo(this.x + 35, this.y + this.height);
+                    ctx.lineTo(this.x + 5, this.y + this.height);
+                    ctx.lineTo(this.x + 15, this.y + 40);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // Cracks
+                    ctx.strokeStyle = '#222';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(this.x + 20, this.y + 15);
+                    ctx.lineTo(this.x + 15, this.y + 30);
+                    ctx.stroke();
+                } else if (this.type === 'spikes') {
+                    // Dangerous spike trap
+                    const spikeCount = 5;
+                    const spikeWidth = this.width / spikeCount;
+                    
+                    ctx.fillStyle = '#444';
+                    ctx.fillRect(this.x, this.y + this.height - 10, this.width, 10);
+                    
+                    ctx.fillStyle = '#666';
+                    for (let i = 0; i < spikeCount; i++) {
+                        ctx.beginPath();
+                        ctx.moveTo(this.x + i * spikeWidth, this.y + this.height - 10);
+                        ctx.lineTo(this.x + i * spikeWidth + spikeWidth / 2, this.y + 10);
+                        ctx.lineTo(this.x + (i + 1) * spikeWidth, this.y + this.height - 10);
+                        ctx.closePath();
+                        ctx.fill();
+                        
+                        // Spike highlights
+                        ctx.fillStyle = '#888';
+                        ctx.beginPath();
+                        ctx.moveTo(this.x + i * spikeWidth, this.y + this.height - 10);
+                        ctx.lineTo(this.x + i * spikeWidth + spikeWidth / 2, this.y + 10);
+                        ctx.lineTo(this.x + i * spikeWidth + spikeWidth / 4, this.y + this.height - 10);
+                        ctx.closePath();
+                        ctx.fill();
+                        ctx.fillStyle = '#666';
+                    }
+                } else if (this.type === 'pillar') {
+                    // Tall pillar obstacle
+                    ctx.fillStyle = '#8B4513';
+                    ctx.fillRect(this.x + 10, this.y, 20, this.height);
+                    
+                    // Wood texture
+                    ctx.strokeStyle = '#654321';
+                    ctx.lineWidth = 2;
+                    for (let i = 0; i < this.height; i += 8) {
+                        ctx.beginPath();
+                        ctx.moveTo(this.x + 10, this.y + i);
+                        ctx.lineTo(this.x + 30, this.y + i);
+                        ctx.stroke();
+                    }
+                    
+                    // Highlight
+                    ctx.fillStyle = '#A0522D';
+                    ctx.fillRect(this.x + 12, this.y, 6, this.height);
+                    
+                    // Shadow
+                    ctx.fillStyle = '#654321';
+                    ctx.fillRect(this.x + 24, this.y, 6, this.height);
+                }
+            }
+        }
+
+        class Cloud {
+            constructor() {
+                this.x = canvas.width + Math.random() * 200;
+                this.y = Math.random() * 150 + 30;
+                this.speed = Math.random() * 0.5 + 0.3;
+                this.scale = Math.random() * 0.5 + 0.7;
+            }
+
+            update() {
+                this.x -= this.speed;
+                if (this.x < -100) {
+                    this.x = canvas.width + 50;
+                }
+            }
+
+            draw() {
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 20 * this.scale, 0, Math.PI * 2);
+                ctx.arc(this.x + 25 * this.scale, this.y, 25 * this.scale, 0, Math.PI * 2);
+                ctx.arc(this.x + 50 * this.scale, this.y, 20 * this.scale, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        const tortoise = new Tortoise();
+        let obstacles = [];
+        let clouds = [];
+
+        // Initialize clouds
+        for (let i = 0; i < 5; i++) {
+            clouds.push(new Cloud());
+        }
+
+        function checkCollision(tortoise, obstacle) {
+            const tortoiseHitbox = {
+                x: tortoise.x + 5,
+                y: tortoise.y + 5,
+                width: tortoise.width - 10,
+                height: tortoise.height - 5
+            };
+
+            const obstacleHitbox = {
+                x: obstacle.x + 5,
+                y: obstacle.y + 5,
+                width: obstacle.width - 10,
+                height: obstacle.height - 10
+            };
+
+            return tortoiseHitbox.x < obstacleHitbox.x + obstacleHitbox.width &&
+                   tortoiseHitbox.x + tortoiseHitbox.width > obstacleHitbox.x &&
+                   tortoiseHitbox.y < obstacleHitbox.y + obstacleHitbox.height &&
+                   tortoiseHitbox.y + tortoiseHitbox.height > obstacleHitbox.y;
+        }
+
+        function drawGround() {
+            const groundY = canvas.height - 150;
+            
+            // Ground
+            ctx.fillStyle = '#8B7355';
+            ctx.fillRect(0, groundY, canvas.width, 150);
+
+            // Ground line
+            ctx.strokeStyle = '#6b5745';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(0, groundY);
+            ctx.lineTo(canvas.width, groundY);
+            ctx.stroke();
+
+            // Ground details (grass patches)
+            ctx.fillStyle = '#6b7d3c';
+            for (let i = 0; i < canvas.width; i += 40) {
+                const offset = (frameCount + i) % canvas.width;
+                ctx.fillRect(offset, groundY + 5, 20, 3);
+                ctx.fillRect(offset + 5, groundY + 2, 2, 6);
+                ctx.fillRect(offset + 12, groundY + 2, 2, 6);
+            }
+        }
+
+        function updateGame() {
+            if (gameState !== 'playing') return;
+
+            frameCount++;
+            score++;
+            scoreDisplay.textContent = `Score: ${Math.floor(score / 10)}`;
+
+            // Aggressive difficulty progression
+            const difficultyLevel = Math.floor(score / 1000);
+            
+            // Speed increases much faster
+            if (frameCount % 200 === 0) {
+                gameSpeed += 1.2; // Faster acceleration
+            }
+            
+            // Additional speed boost every 2000 points
+            if (score % 2000 === 0 && score > 0) {
+                gameSpeed += 3;
+            }
+
+            tortoise.update();
+
+            // Dynamic obstacle spawning - gets more frequent and challenging
+            let spawnRate = 120 - (difficultyLevel * 8); // Faster spawning
+            spawnRate = Math.max(spawnRate, 40); // Minimum gap of 40 frames (very tight!)
+            
+            // Random variation in spawn timing for unpredictability
+            const spawnVariation = Math.random() * 20 - 10;
+            
+            if (frameCount % Math.floor(spawnRate + spawnVariation) === 0) {
+                obstacles.push(new Obstacle());
+                
+                // Chance to spawn double obstacles at higher difficulty
+                if (difficultyLevel > 3 && Math.random() > 0.7) {
+                    setTimeout(() => {
+                        obstacles.push(new Obstacle());
+                    }, 100);
+                }
+                
+                // Triple obstacles at extreme difficulty
+                if (difficultyLevel > 6 && Math.random() > 0.85) {
+                    setTimeout(() => {
+                        obstacles.push(new Obstacle());
+                    }, 200);
+                }
+            }
+
+            // Update obstacles
+            obstacles = obstacles.filter(obstacle => {
+                obstacle.update();
+                if (checkCollision(tortoise, obstacle)) {
+                    endGame();
+                }
+                return obstacle.x > -obstacle.width;
+            });
+
+            // Update clouds
+            clouds.forEach(cloud => cloud.update());
+        }
+
+        function drawGame() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw sky gradient
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height / 2);
+            gradient.addColorStop(0, '#87CEEB');
+            gradient.addColorStop(1, '#E0F6FF');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height / 2);
+
+            // Draw clouds
+            clouds.forEach(cloud => cloud.draw());
+
+            drawGround();
+            tortoise.draw();
+            obstacles.forEach(obstacle => obstacle.draw());
+        }
+
+        function gameLoop() {
+            updateGame();
+            drawGame();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function startGame() {
+            gameState = 'playing';
+            score = 0;
+            gameSpeed = 6;
+            frameCount = 0;
+            obstacles = [];
+            tortoise.y = tortoise.baseY;
+            tortoise.velocityY = 0;
+            tortoise.isJumping = false;
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+        }
+
+        function endGame() {
+            gameState = 'gameover';
+            const finalScore = Math.floor(score / 10);
+            if (finalScore > highScore) {
+                highScore = finalScore;
+                highScoreDisplay.textContent = `High Score: ${highScore}`;
+            }
+            gameOverScore.textContent = `Score: ${finalScore}`;
+            gameOverScreen.classList.remove('hidden');
+        }
+
+        function returnToStart() {
+            gameState = 'start';
+            score = 0;
+            gameSpeed = 6;
+            frameCount = 0;
+            obstacles = [];
+            tortoise.y = tortoise.baseY;
+            tortoise.velocityY = 0;
+            tortoise.isJumping = false;
+            gameOverScreen.classList.add('hidden');
+            startScreen.classList.remove('hidden');
+            scoreDisplay.textContent = 'Score: 0';
+        }
+
+        // Event listeners
+        document.getElementById('startBtn').addEventListener('click', startGame);
+        document.getElementById('resurrectBtn').addEventListener('click', startGame);
+        document.getElementById('endGameBtn').addEventListener('click', returnToStart);
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (gameState === 'playing') {
+                    tortoise.jump();
+                } else if (gameState === 'start') {
+                    startGame();
+                }
+            }
+        });
+
+        canvas.addEventListener('click', () => {
+            if (gameState === 'playing') {
+                tortoise.jump();
+            }
+        });
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            tortoise.baseY = canvas.height - 150 - tortoise.height;
+            if (!tortoise.isJumping) {
+                tortoise.y = tortoise.baseY;
+            }
+        });
+
+        gameLoop();
+    </script>
+</body>
+</html>
